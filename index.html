@@ -17,7 +17,6 @@
       --neon-green: #59ff00;
       --neon-purple: #bf00ff;
       --neon-gold: #ffaa00;
-      --neon-orange: #ff5500;
       --bg-dark: #05060b;
       --bg-panel: rgba(20, 24, 34, 0.95);
       --border-neon: rgba(0, 240, 255, 0.28);
@@ -348,9 +347,7 @@
           <div class="c-tab" data-target="carousel-lasers">LASERS</div>
           <div class="c-tab" data-target="carousel-hulls">HULL PAINTS</div>
         </div>
-        <div class="carousel-container" id="carousel-items-container">
-          <!-- Populated by JS -->
-        </div>
+        <div class="carousel-container" id="carousel-items-container"></div>
         <button class="btn-purchase-ship" id="btn-garage-action">EQUIP</button>
       </div>
     </div>
@@ -368,9 +365,6 @@
   </div>
 
   <script>
-    // =============================================================================
-    // NEW SHIP DESIGNS DATA CONFIGURATION
-    // =============================================================================
     const SHIPS_DATABASE = {
       stealth_ray: { id: 'stealth_ray', name: 'Stealth Ray', price: 0, speed: 9.5, maxHealth: 90, dmgMul: 1.0, evasion: 15 },
       crimson_lance: { id: 'crimson_lance', name: 'Crimson Lance', price: 1000, speed: 8.5, maxHealth: 110, dmgMul: 1.1, evasion: 5 },
@@ -413,27 +407,28 @@
       { id: '#1c1917|#dc2626', name: 'Inferno Dark', price: 350, bg: '#1c1917', trim: '#dc2626' }
     ];
 
-    // =============================================================================
-    // AUDIO SYSTEM
-    // =============================================================================
     class SoundController {
       constructor() { this.ctx = null; }
       init() {
-        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-        if (this.ctx.state === 'suspended') this.ctx.resume();
+        try {
+          if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          if (this.ctx.state === 'suspended') this.ctx.resume();
+        } catch(e) {}
       }
       playTone(freq, type, dur, vol, slideTo=null) {
         if (!this.ctx) return;
-        const now = this.ctx.currentTime;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(freq, now);
-        if(slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, now + dur);
-        gain.gain.setValueAtTime(vol, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + dur);
-        osc.connect(gain); gain.connect(this.ctx.destination);
-        osc.start(now); osc.stop(now + dur);
+        try {
+          const now = this.ctx.currentTime;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+          if(slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, now + dur);
+          gain.gain.setValueAtTime(vol, now);
+          gain.gain.exponentialRampToValueAtTime(0.01, now + dur);
+          osc.connect(gain); gain.connect(this.ctx.destination);
+          osc.start(now); osc.stop(now + dur);
+        } catch(e) {}
       }
       playShoot() { this.playTone(860, 'sawtooth', 0.11, 0.18, 120); }
       playExplosion(large=false) { this.playTone(large?130:200, large?'triangle':'square', large?0.45:0.22, large?0.35:0.22, 25); }
@@ -442,9 +437,6 @@
       playWarp() { this.playTone(200, 'sine', 0.14, 0.15, 1100); }
     }
 
-    // =============================================================================
-    // PROCEDURAL ENVIRONMENT (Planets, Nebulas, Comets, Stars)
-    // =============================================================================
     class EnvironmentEngine {
       constructor(w, h) {
         this.w = w; this.h = h;
@@ -452,11 +444,11 @@
         this.nebulas = []; this.planets = []; this.comets = [];
         this.bgLevel = 0;
         this.colors = [
-          {p1: '#003366', p2: '#00ffcc', r: false}, // Lvl 1 Earthish
-          {p1: '#661100', p2: '#ff5500', r: false}, // Lvl 2 Mars
-          {p1: '#330066', p2: '#ff00ff', r: true},  // Lvl 3 Gas Giant
-          {p1: '#000000', p2: '#ff0000', r: true},  // Lvl 4 Black Hole
-          {p1: '#004411', p2: '#aaff00', r: false}  // Lvl 5 Toxic
+          {p1: '#003366', p2: '#00ffcc', r: false},
+          {p1: '#661100', p2: '#ff5500', r: false},
+          {p1: '#330066', p2: '#ff00ff', r: true},
+          {p1: '#000000', p2: '#ff0000', r: true},
+          {p1: '#004411', p2: '#aaff00', r: false}
         ];
       }
       makeStar() { return { x: Math.random()*this.w, y: Math.random()*this.h, s: Math.random()*2+0.5, spd: Math.random()*2+0.5, b: Math.random() }; }
@@ -513,9 +505,6 @@
       }
     }
 
-    // =============================================================================
-    // GAME ENTITIES
-    // =============================================================================
     class Particle {
       constructor(x, y, color, speedMul) {
         this.x = x; this.y = y; this.color = color; this.life = 1; this.decay = 0.02+Math.random()*0.03;
@@ -566,24 +555,20 @@
       }
     }
 
-    // =============================================================================
-    // NEW PLAYER RENDERING (All new designs integrated)
-    // =============================================================================
     class PlayerRenderer {
       static draw(ctx, state, shipId, x, y, tilt=0, scale=1) {
-        ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.scale(scale, scale);
+        ctx.save(); ctx.translate(x, y); ctx.rotate(tilt); ctx.style = ctx.style || {}; ctx.scale(scale, scale);
         
-        const hullBg = state.hullPaint.split('|')[0];
-        const trim = state.hullPaint.split('|')[1];
-        const laser = state.laserColor;
-        const intensity = state.upgrades.intensity;
-        const topper = state.activeTopper;
+        let paint = state.hullPaint || '#11131a|#00f0ff';
+        const hullBg = paint.split('|')[0];
+        const trim = paint.split('|')[1];
+        const laser = state.laserColor || '#00f0ff';
+        const intensity = state.upgrades?.intensity || 1;
+        const topper = state.activeTopper || 'none';
 
-        // Exhaust Rendering based on ship
         const flick = Math.random()*8;
         ctx.fillStyle = trim; ctx.shadowColor = trim; ctx.shadowBlur=12;
         
-        // Dynamic exhaust positions per ship
         let exhaustOffsets = [];
         if (shipId === 'stealth_ray') exhaustOffsets = [[0, 16]];
         else if (shipId === 'crimson_lance') exhaustOffsets = [[0, 20]];
@@ -591,19 +576,17 @@
         else if (shipId === 'gilded_arrow') exhaustOffsets = [[-12, 10], [12, 10], [0, 15]];
         else if (shipId === 'starlifter') exhaustOffsets = [[-18, 22], [18, 22]];
         else if (shipId === 'inferno_wraith') exhaustOffsets = [[-8, 20], [8, 20]];
+        else exhaustOffsets = [[0, 16]];
 
         exhaustOffsets.forEach(pos => {
           ctx.beginPath(); ctx.moveTo(pos[0]-8, pos[1]); ctx.lineTo(pos[0], pos[1]+16+flick); ctx.lineTo(pos[0]+8, pos[1]); ctx.closePath(); ctx.fill();
           ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(pos[0]-4, pos[1]); ctx.lineTo(pos[0], pos[1]+10+flick*0.5); ctx.lineTo(pos[0]+4, pos[1]); ctx.closePath(); ctx.fill();
-          ctx.fillStyle = trim; // reset for next iteration
+          ctx.fillStyle = trim;
         });
         ctx.shadowBlur=0;
 
-        // Base Styling
         ctx.fillStyle = hullBg; ctx.strokeStyle = trim; ctx.lineWidth = 2.5;
         
-        // --- VISUAL EXTENSIONS (Intensity Aux Weapons) ---
-        // Dynamically place them wider for wider ships
         let auxSpread = (shipId === 'lunar_eclipse' || shipId === 'starlifter' || shipId === 'inferno_wraith') ? 35 : 25;
         
         if (intensity >= 2) {
@@ -621,24 +604,19 @@
           ctx.shadowBlur=0; ctx.fillStyle = hullBg;
         }
 
-        // --- NEW SHIP PATHS ---
         ctx.beginPath();
-        
         if (shipId === 'stealth_ray') {
-          // Image 2: Black stealth, swept forward wings
           ctx.moveTo(0, -32); ctx.lineTo(10, -12); ctx.lineTo(30, -5); 
           ctx.lineTo(26, 18); ctx.lineTo(12, 12); ctx.lineTo(0, 18);
           ctx.lineTo(-12, 12); ctx.lineTo(-26, 18); ctx.lineTo(-30, -5); ctx.lineTo(-10, -12);
         } 
         else if (shipId === 'crimson_lance') {
-          // Image 3: Long needle nose, swept back wings
           ctx.moveTo(0, -38); ctx.lineTo(4, -15); ctx.lineTo(15, -8); ctx.lineTo(6, 0);
           ctx.lineTo(28, 16); ctx.lineTo(26, 26); ctx.lineTo(10, 20); ctx.lineTo(0, 28);
           ctx.lineTo(-10, 20); ctx.lineTo(-26, 26); ctx.lineTo(-28, 16); 
           ctx.lineTo(-6, 0); ctx.lineTo(-15, -8); ctx.lineTo(-4, -15);
         } 
         else if (shipId === 'lunar_eclipse') {
-          // Image 4: Crescent Shape
           ctx.moveTo(0, -25);
           ctx.quadraticCurveTo(32, -20, 38, 25);
           ctx.quadraticCurveTo(0, 10, 0, 0);
@@ -646,32 +624,30 @@
           ctx.quadraticCurveTo(-32, -20, 0, -25);
         } 
         else if (shipId === 'gilded_arrow') {
-          // Image 5/9: Sharp Arrow, side pods
           ctx.moveTo(0, -35); ctx.lineTo(24, 12); ctx.lineTo(12, 22); ctx.lineTo(0, 15);
           ctx.lineTo(-12, 22); ctx.lineTo(-24, 12);
         } 
         else if (shipId === 'starlifter') {
-          // Image 7/11: Bulky, wide heavy lifter
           ctx.moveTo(-10, -18); ctx.lineTo(10, -18); ctx.lineTo(38, 5); 
           ctx.lineTo(38, 22); ctx.lineTo(20, 26); ctx.lineTo(0, 20);
           ctx.lineTo(-20, 26); ctx.lineTo(-38, 22); ctx.lineTo(-38, 5);
         } 
         else if (shipId === 'inferno_wraith') {
-          // Image 10: Jagged armor, menacing swept wings
           ctx.moveTo(0, -30); ctx.lineTo(15, -15); ctx.lineTo(35, 5); 
           ctx.lineTo(25, 25); ctx.lineTo(12, 12); ctx.lineTo(0, 24);
           ctx.lineTo(-12, 12); ctx.lineTo(-25, 25); ctx.lineTo(-35, 5); ctx.lineTo(-15, -15);
         }
-        
+        else {
+          ctx.moveTo(0, -26); ctx.lineTo(24, 20); ctx.lineTo(0, 22); ctx.lineTo(-24, 20);
+        }
         ctx.closePath(); ctx.fill(); ctx.stroke();
 
-        // --- SPECIFIC SHIP DETAILS (Canopies, Glowing Cores, Vents) ---
+        // Details
         if (shipId === 'crimson_lance') {
           ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(0, -5, 3, 12, 0, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = trim; ctx.lineWidth = 1; ctx.stroke();
         } 
         else if (shipId === 'lunar_eclipse') {
-          // Glowing center ring core
           ctx.beginPath(); ctx.arc(0, -2, 10, 0, Math.PI*2);
           ctx.fillStyle = '#0a0a0a'; ctx.fill();
           ctx.strokeStyle = trim; ctx.shadowColor = trim; ctx.shadowBlur = 15; ctx.lineWidth = 3; ctx.stroke();
@@ -680,12 +656,11 @@
         else if (shipId === 'gilded_arrow') {
           ctx.fillStyle = '#111'; ctx.beginPath(); ctx.ellipse(0, -2, 5, 12, 0, 0, Math.PI*2); ctx.fill();
           ctx.strokeStyle = trim; ctx.stroke();
-          // Engine pods
           ctx.fillStyle = hullBg; ctx.fillRect(14, 0, 8, 16); ctx.fillRect(-22, 0, 8, 16);
           ctx.strokeRect(14, 0, 8, 16); ctx.strokeRect(-22, 0, 8, 16);
         }
         else if (shipId === 'starlifter') {
-          ctx.fillStyle = '#111'; ctx.fillRect(-8, -10, 16, 4); // Cockpit strip
+          ctx.fillStyle = '#111'; ctx.fillRect(-8, -10, 16, 4);
           ctx.beginPath(); ctx.arc(-22, 12, 6, 0, Math.PI*2); ctx.arc(22, 12, 6, 0, Math.PI*2);
           ctx.fillStyle = '#222'; ctx.fill(); ctx.lineWidth=2; ctx.stroke();
         }
@@ -696,10 +671,9 @@
           ctx.shadowBlur = 0;
         }
 
-        // --- TOPPERS ---
+        // Toppers
         if (topper && topper !== 'none') {
           ctx.save();
-          // Adjust vertical offset for certain ships
           let yOff = (shipId === 'crimson_lance' || shipId === 'gilded_arrow') ? -10 : (shipId==='lunar_eclipse' ? -15 : 0);
           ctx.translate(0, yOff);
 
@@ -755,14 +729,13 @@
         this.rfT=0; this.shT=0; this.dsT=0; this.updateStats();
       }
       updateStats() {
-        const d = SHIPS_DATABASE[this.eng.state.activeShip];
+        const d = SHIPS_DATABASE[this.eng.state.activeShip] || SHIPS_DATABASE['stealth_ray'];
         this.speed = d.speed; this.maxHp = d.maxHealth; this.dmgMul = d.dmgMul; this.eva = d.evasion;
       }
       update(keys) {
         let mx = 0; if(keys['ArrowLeft']||keys['KeyA']) mx-=1; if(keys['ArrowRight']||keys['KeyD']) mx+=1;
         this.x += mx * this.speed;
         
-        // Wrap around
         if(this.x < -this.w/2) { this.eng.flash(0,this.y); this.x=this.eng.w+this.w/2; this.eng.flash(this.x,this.y); this.eng.snd.playWarp(); }
         else if(this.x > this.eng.w+this.w/2) { this.eng.flash(this.eng.w,this.y); this.x=-this.w/2; this.eng.flash(this.x,this.y); this.eng.snd.playWarp(); }
         
@@ -770,7 +743,7 @@
         if(this.rfT>0) this.rfT-=16.6; if(this.shT>0) this.shT-=16.6; if(this.dsT>0) this.dsT-=16.6;
       }
       canShoot(now) {
-        const base = 230 - (this.eng.state.upgrades.fireRate-1)*25;
+        const base = 230 - ((this.eng.state.upgrades?.fireRate || 1)-1)*25;
         return now - this.lastShot >= (this.rfT>0 ? base*0.5 : base);
       }
       draw(ctx) {
@@ -779,9 +752,6 @@
       }
     }
 
-    // =============================================================================
-    // MAIN GAME ENGINE
-    // =============================================================================
     class GameEngine {
       constructor() {
         this.canvas = document.getElementById('gameCanvas');
@@ -801,6 +771,7 @@
         this.garageCanvas = document.getElementById('garageCanvas');
         this.gCtx = this.garageCanvas.getContext('2d');
         this.garageIdx = SHIP_KEYS.indexOf(this.state.activeShip);
+        if(this.garageIdx < 0) this.garageIdx = 0;
         this.garageTab = 'carousel-ships';
 
         this.initEvents();
@@ -809,23 +780,25 @@
       }
 
       loadState() {
-        // v5 namespace resets data to accommodate entirely new ships
-        let s = localStorage.getItem('cyberStrike_v5');
+        let s = localStorage.getItem('cyberStrike_v6');
         if(s) { try{ this.state = JSON.parse(s); }catch(e){ this.state=null; } }
-        if(!this.state) this.state = { 
-          cr: 0, hs: 0, activeShip: 'stealth_ray', ownedShips: ['stealth_ray'],
-          upgrades: { power:1, fireRate:1, intensity:1, velocity:1 },
-          laserColor: '#00f0ff', ownedLasers: ['#00f0ff'],
-          hullPaint: '#11131a|#00f0ff', ownedHulls: ['#11131a|#00f0ff'],
-          activeTopper: 'none', ownedToppers: ['none']
-        };
+        if(!this.state || !SHIPS_DATABASE[this.state.activeShip]) {
+          this.state = { 
+            cr: 0, hs: 0, activeShip: 'stealth_ray', ownedShips: ['stealth_ray'],
+            upgrades: { power:1, fireRate:1, intensity:1, velocity:1 },
+            laserColor: '#00f0ff', ownedLasers: ['#00f0ff'],
+            hullPaint: '#11131a|#00f0ff', ownedHulls: ['#11131a|#00f0ff'],
+            activeTopper: 'none', ownedToppers: ['none']
+          };
+          this.save();
+        }
       }
-      save() { localStorage.setItem('cyberStrike_v5', JSON.stringify(this.state)); }
+      save() { localStorage.setItem('cyberStrike_v6', JSON.stringify(this.state)); }
 
       initEvents() {
         window.addEventListener('keydown', e => { if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); this.keys[e.code]=true; if(e.code==='KeyP'||e.code==='Escape') this.togglePause(); });
         window.addEventListener('keyup', e => this.keys[e.code]=false);
-        const bindT = (id, k) => { let el = document.getElementById(id); el.addEventListener('touchstart', e=>{e.preventDefault();this.snd.init();this.keys[k]=true;}); el.addEventListener('touchend', e=>{e.preventDefault();this.keys[k]=false;}); }
+        const bindT = (id, k) => { let el = document.getElementById(id); if(!el) return; el.addEventListener('touchstart', e=>{e.preventDefault();this.snd.init();this.keys[k]=true;}); el.addEventListener('touchend', e=>{e.preventDefault();this.keys[k]=false;}); }
         bindT('btn-left','ArrowLeft'); bindT('btn-right','ArrowRight'); bindT('btn-shoot','Space');
 
         document.getElementById('start-btn').onclick = () => { this.snd.init(); this.start(); };
@@ -877,10 +850,10 @@
           document.getElementById(`upg-${k}`).disabled = maxed || this.state.cr < cost;
         });
 
-        const d = SHIPS_DATABASE[this.garagePreviewShip];
+        const d = SHIPS_DATABASE[this.garagePreviewShip] || SHIPS_DATABASE['stealth_ray'];
         const updateBar = (id, val, max) => {
           document.getElementById(`stat-val-${id}`).textContent = `${val}/${max}`;
-          document.getElementById(`stat-bar-${id}`).style.width = `${(val/max)*100}%`;
+          document.getElementById(`stat-bar-${id}`).style.width = `${Math.min(100, (val/max)*100)}%`;
         };
         updateBar('dmg', Math.round(d.dmgMul*100), 200);
         updateBar('hp', d.maxHealth, 300);
@@ -979,7 +952,6 @@
         const bob = Math.sin(performance.now()/300)*5;
         let previewState = JSON.parse(JSON.stringify(this.state));
         
-        // Increased scale for better visual presence in garage
         PlayerRenderer.draw(ctx, previewState, this.garagePreviewShip, w/2, h/2 - 20 + bob, 0, 1.8);
       }
 
@@ -988,7 +960,10 @@
         this.bullets=[]; this.enemies=[]; this.powerups=[]; this.particles=[]; this.texts=[];
         this.player = new Player(this); this.health = this.player.maxHp;
         this.lastSpwn = performance.now(); this.env.bgLevel=0; 
-        ['start-screen','pause-screen','game-over-screen','garage-screen'].forEach(id=>document.getElementById(id).classList.remove('active'));
+        ['start-screen','pause-screen','game-over-screen','garage-screen'].forEach(id => {
+          let el = document.getElementById(id);
+          if(el) el.classList.remove('active');
+        });
         this.updateHUD();
       }
       togglePause() {
@@ -1049,7 +1024,7 @@
         else if(pct>25) { hb.style.background='linear-gradient(90deg,#ffe600,#ff9900)'; ht.style.color='#ffe600'; }
         else { hb.style.background='linear-gradient(90deg,#ff0055,#ff3300)'; ht.style.color='#ff0055'; }
         
-        const setB = (id,t,m) => { let e=document.getElementById(id); if(t>0){e.classList.add('active'); e.querySelector('.badge-timer-fill').style.width=`${(t/m)*100}%`;}else e.classList.remove('active'); };
+        const setB = (id,t,m) => { let e=document.getElementById(id); if(!e)return; if(t>0){e.classList.add('active'); e.querySelector('.badge-timer-fill').style.width=`${(t/m)*100}%`;}else e.classList.remove('active'); };
         setB('powerup-rapid', this.player.rfT, 8500); setB('powerup-shield', this.player.shT, 10000); setB('powerup-double', this.player.dsT, 10000);
       }
 
